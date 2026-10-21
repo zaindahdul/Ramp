@@ -148,24 +148,24 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="py-1 font-medium">Reason</th>
-                  <th className="py-1 text-right font-medium">Credits</th>
-                  <th className="py-1 text-right font-medium">Invoices affected</th>
-                  <th className="py-1 text-right font-medium">Amount</th>
-                  <th className="py-1 text-right font-medium">Still open</th>
+                  <th className="px-2 py-1 font-medium">Reason</th>
+                  <th className="px-2 py-1 text-right font-medium">Credits</th>
+                  <th className="px-2 py-1 text-right font-medium">Invoices affected</th>
+                  <th className="px-2 py-1 text-right font-medium">Amount</th>
+                  <th className="px-2 py-1 text-right font-medium">Still open</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {REASON_STACK_ORDER.filter((r) => m.byReason[r].count > 0).map((r) => (
                   <tr key={r}>
-                    <td className="py-1.5">
+                    <td className="px-2 py-1.5">
                       {REASON_LABELS[r]}
                       {isBillingError(r) && <span className="ml-1 text-xs text-muted-foreground">(billing error)</span>}
                     </td>
-                    <td className="py-1.5 text-right tabular-nums">{m.byReason[r].count}</td>
-                    <td className="py-1.5 text-right tabular-nums">{m.byReason[r].invoiceCount}</td>
-                    <td className="py-1.5 text-right tabular-nums">{money(m.byReason[r].cents)}</td>
-                    <td className="py-1.5 text-right tabular-nums">{money(m.byReason[r].openCents)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{m.byReason[r].count}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{m.byReason[r].invoiceCount}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{money(m.byReason[r].cents)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{money(m.byReason[r].openCents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -180,11 +180,11 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="py-1 font-medium">Credit memo</th>
-                  <th className="py-1 font-medium">Date</th>
-                  <th className="py-1 text-right font-medium">Age</th>
-                  <th className="py-1 font-medium">Reason</th>
-                  <th className="py-1 text-right font-medium">Amount</th>
+                  <th className="px-2 py-1 font-medium">Credit memo</th>
+                  <th className="px-2 py-1 font-medium">Date</th>
+                  <th className="px-2 py-1 text-right font-medium">Age</th>
+                  <th className="px-2 py-1 font-medium">Reason</th>
+                  <th className="px-2 py-1 text-right font-medium">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -192,11 +192,11 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
                   const date = c.documentDate ? toPlainDate(c.documentDate) : today;
                   return (
                     <tr key={c.id}>
-                      <td className="py-1.5 font-mono text-xs">{c.documentNumber}</td>
-                      <td className="py-1.5">{formatPlainDate(date)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{daysBetween(date, today)} days</td>
-                      <td className="py-1.5">{c.creditReason ? REASON_LABELS[c.creditReason] : "—"}</td>
-                      <td className="py-1.5 text-right tabular-nums">{c.totalCents !== null ? money(c.totalCents) : "—"}</td>
+                      <td className="px-2 py-1.5 font-mono text-xs">{c.documentNumber}</td>
+                      <td className="px-2 py-1.5">{formatPlainDate(date)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{daysBetween(date, today)} days</td>
+                      <td className="px-2 py-1.5">{c.creditReason ? REASON_LABELS[c.creditReason] : "—"}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{c.totalCents !== null ? money(c.totalCents) : "—"}</td>
                     </tr>
                   );
                 })}
@@ -210,21 +210,21 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="py-1 font-medium">Credit memo</th>
-                  <th className="py-1 font-medium">Date</th>
-                  <th className="py-1 font-medium">Invoice</th>
-                  <th className="py-1 font-medium">Reason</th>
-                  <th className="py-1 text-right font-medium">Amount</th>
+                  <th className="px-2 py-1 font-medium">Credit memo</th>
+                  <th className="px-2 py-1 font-medium">Date</th>
+                  <th className="px-2 py-1 font-medium">Invoice</th>
+                  <th className="px-2 py-1 font-medium">Reason</th>
+                  <th className="px-2 py-1 text-right font-medium">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {largestErrors.map((c) => (
                   <tr key={c.id}>
-                    <td className="py-1.5 font-mono text-xs">{c.documentNumber}</td>
-                    <td className="py-1.5">{c.documentDate ? formatPlainDate(toPlainDate(c.documentDate)) : "—"}</td>
-                    <td className="py-1.5 font-mono text-xs">{c.linkedInvoice?.documentNumber ?? "not linked"}</td>
-                    <td className="py-1.5">{c.creditReason ? REASON_LABELS[c.creditReason] : "—"}</td>
-                    <td className="py-1.5 text-right tabular-nums">{c.totalCents !== null ? money(c.totalCents) : "—"}</td>
+                    <td className="px-2 py-1.5 font-mono text-xs">{c.documentNumber}</td>
+                    <td className="px-2 py-1.5">{c.documentDate ? formatPlainDate(toPlainDate(c.documentDate)) : "—"}</td>
+                    <td className="px-2 py-1.5 font-mono text-xs">{c.linkedInvoice?.documentNumber ?? "not linked"}</td>
+                    <td className="px-2 py-1.5">{c.creditReason ? REASON_LABELS[c.creditReason] : "—"}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{c.totalCents !== null ? money(c.totalCents) : "—"}</td>
                   </tr>
                 ))}
               </tbody>

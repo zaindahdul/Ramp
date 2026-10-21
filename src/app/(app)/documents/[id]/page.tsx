@@ -118,6 +118,16 @@ export default async function ReviewPage({ params }: PageProps<"/documents/[id]"
               <iframe src={fileUrl} title="Original document" className="h-[80vh] w-full bg-white" />
             )}
           </div>
+          {doc.storageKey && (
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Open the original in a new tab
+            </a>
+          )}
         </section>
 
         <section className="space-y-6">

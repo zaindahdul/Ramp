@@ -221,10 +221,10 @@ export function ReviewForm({ documentId, initial, alreadyConfirmed, matchedVendo
             )}
           >
             {check.ok ? <CheckCircle2Icon className="size-4" /> : <AlertTriangleIcon className="size-4" />}
-            Lines {formatCents(check.lineSum, currency)}
-            {check.tax !== 0 && <> + tax {formatCents(check.tax, currency)}</>} ={" "}
-            {formatCents(check.lineSum + check.tax, currency)}
-            {check.ok ? " matches the total." : `, but the total is ${formatCents(check.total, currency)}.`}
+            {check.tax !== 0
+              ? `Lines ${formatCents(check.lineSum, currency)} + tax ${formatCents(check.tax, currency)} = ${formatCents(check.lineSum + check.tax, currency)}`
+              : `Lines add up to ${formatCents(check.lineSum, currency)}`}
+            {check.ok ? ", matching the total." : `, but the total is ${formatCents(check.total, currency)}.`}
           </div>
         )}
       </section>
