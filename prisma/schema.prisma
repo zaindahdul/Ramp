@@ -1,0 +1,224 @@
+// AP credit recovery & vendor scorecard.
+//
+// Conventions:
+// - Every tenant-owned table carries organizationId and every query filters by it.
+// - Money is integer cents plus an ISO 4217 currency code. Never floats.
+// - Business dates (document date, due date) are plain DATE columns; timestamps
+//   are timestamptz and always written in UTC.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DocumentStatus {
+  uploaded
+  extracting
+  needs_review
+  confirmed
+  failed
+}
+
+enum DocumentType {
+  invoice
+  credit_memo
+  other
+}
+
+enum DocumentSource {
+  upload
+  seed
+}
+
+enum CreditReason {
+  pricing_error
+  quantity_error
+  damaged_or_defective
+  duplicate_billing
+  return
+  rebate_or_promo
+  service_failure
+  other
+}
+
+enum ReasonSource {
+  stated
+  inferred
+  user
+}
+
+enum CreditStatus {
+  open
+  applied
+  written_off
+}
+
+enum LinkMethod {
+  reference
+  heuristic
+  manual
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  users     User[]
+  sessions  Session[]
+  vendors   Vendor[]
+  aliases   VendorAlias[]
+  documents Document[]
+  lineItems LineItem[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String   @unique
+  name           String
+  passwordHash   String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessions     Session[]
+
+  @@index([organizationId])
+}
+
+model Session {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  // sha256 of the cookie value; the raw token is never stored.
+  tokenHash      String   @unique
+  expiresAt      DateTime @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Vendor {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  aliases      VendorAlias[]
+  documents    Document[]
+
+  @@index([organizationId])
+}
+
+// Every normalized name that resolves to a vendor. Merging two vendors moves
+// the source vendor's aliases to the target, so future uploads match too.
+model VendorAlias {
+  id             String   @id @default(cuid())
+  organizationId String
+  vendorId       String
+  normalizedName String
+  rawName        String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vendor       Vendor       @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, normalizedName])
+  @@index([vendorId])
+}
+
+model Document {
+  id             String         @id @default(cuid())
+  organizationId String
+  source         DocumentSource @default(upload)
+  status         DocumentStatus @default(uploaded)
+  type           DocumentType?
+
+  // Original file. Null for seeded records, which have no file behind them.
+  originalFilename String?
+  mimeType         String?
+  sizeBytes        Int?
+  fileSha256       String?
+  storageKey       String?
+
+  // Extraction bookkeeping.
+  extractor           String?
+  extractionAttempts  Int       @default(0)
+  extractionStartedAt DateTime? @db.Timestamptz(3)
+  rawExtraction       Json?
+  errorMessage        String?
+  reviewIssues        String[]  @default([])
+  duplicateOfId       String?
+
+  // Extracted (and user-confirmed) fields.
+  vendorId                 String?
+  vendorNameRaw            String?
+  documentNumber           String?
+  documentNumberNormalized String?
+  documentDate             DateTime? @db.Date
+  dueDate                  DateTime? @db.Date
+  paymentTerms             String?
+  currency                 String?   @db.Char(3)
+  subtotalCents            Int?
+  taxCents                 Int?
+  // Always positive. A credit memo's total is the amount the vendor owes back.
+  totalCents               Int?
+  // vendorId|documentNumberNormalized|currency|totalCents, set only on the
+  // first document with that combination. Enforces "no duplicate records".
+  dedupeKey                String?
+
+  // Credit memo fields.
+  referencedInvoiceNumber String?
+  statedReason            String?
+  creditReason            CreditReason?
+  creditReasonSource      ReasonSource?
+  creditStatus            CreditStatus?
+  creditStatusChangedAt   DateTime?     @db.Timestamptz(3)
+  linkedInvoiceId         String?
+  linkMethod              LinkMethod?
+  // Invoices that fit equally well when auto-linking was ambiguous.
+  linkCandidateIds        String[]      @default([])
+
+  confirmedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vendor        Vendor?      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  linkedInvoice Document?    @relation("CreditLink", fields: [linkedInvoiceId], references: [id], onDelete: SetNull)
+  credits       Document[]   @relation("CreditLink")
+  lineItems     LineItem[]
+
+  @@unique([organizationId, fileSha256])
+  @@unique([organizationId, dedupeKey])
+  @@index([organizationId, status])
+  @@index([organizationId, type, documentDate])
+  @@index([organizationId, vendorId, type])
+  @@index([linkedInvoiceId])
+}
+
+model LineItem {
+  id             String  @id @default(cuid())
+  organizationId String
+  documentId     String
+  position       Int
+  description    String
+  // Quantity is not money, so it may be fractional (2.5 hours).
+  quantity       Float?
+  unitPriceCents Int?
+  lineTotalCents Int
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
