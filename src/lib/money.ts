@@ -206,3 +206,15 @@ export function divRound(numerator: number, denominator: number): number {
   const d = Math.abs(denominator);
   return sign * Math.floor((2 * n + d) / (2 * d));
 }
+
+/** "$1.2K" style, for chart axes. Exact input; Intl does the rounding. */
+export function formatCentsCompact(cents: Cents, currency: string): string {
+  assertCents(cents);
+  const code = currency.toUpperCase();
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: code,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(centsToDecimalString(cents, code) as `${number}`);
+}

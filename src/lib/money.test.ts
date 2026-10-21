@@ -3,6 +3,7 @@ import {
   centsToDecimalString,
   divRound,
   formatCents,
+  formatCentsCompact,
   formatTotals,
   parseMoneyToCents,
   totalsByCurrency,
@@ -100,5 +101,13 @@ describe("divRound", () => {
     expect(divRound(-10, 4)).toBe(-3);
     expect(divRound(7, 2)).toBe(4);
     expect(() => divRound(1, 0)).toThrow();
+  });
+});
+
+describe("formatCentsCompact", () => {
+  it("abbreviates large amounts for chart axes", () => {
+    expect(formatCentsCompact(123_456_78, "USD")).toBe("$123.5K");
+    expect(formatCentsCompact(0, "USD")).toBe("$0");
+    expect(formatCentsCompact(250_000_000, "EUR")).toBe("€2.5M");
   });
 });
