@@ -1,4 +1,4 @@
-import { AlertCircleIcon, AlertTriangleIcon, ArrowLeftIcon, FileXIcon, LoaderIcon } from "lucide-react";
+import { AlertCircleIcon, AlertTriangleIcon, ArrowLeftIcon, ArrowRightIcon, FileXIcon, LoaderIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,6 +7,7 @@ import { AutoRefresh } from "@/app/(app)/documents/[id]/auto-refresh";
 import { DeleteDocumentButton, ReviewForm } from "@/app/(app)/documents/[id]/review-form";
 import { RetryButton } from "@/app/(app)/documents/[id]/retry-button";
 import { DocumentStatusBadge, TYPE_LABELS } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/auth";
 import { toConfirmInput } from "@/lib/confirm";
 import { formatPlainDate, toPlainDate } from "@/lib/dates";
@@ -43,6 +44,11 @@ export default async function ReviewPage({ params }: PageProps<"/documents/[id]"
   if (!doc) notFound();
 
   const extracting = doc.status === "uploaded" || doc.status === "extracting";
+  const nextInQueue = await db.document.findFirst({
+    where: { organizationId, status: "needs_review", id: { not: doc.id } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
   const matched =
     doc.vendor ?? (doc.vendorNameRaw ? await findVendorByName(organizationId, doc.vendorNameRaw) : null);
   const invoiceOptions = doc.type === "credit_memo" ? await invoiceOptionsForCredit(organizationId, doc) : [];
@@ -68,7 +74,15 @@ export default async function ReviewPage({ params }: PageProps<"/documents/[id]"
             {doc.confirmedAt && ` · confirmed ${doc.confirmedAt.toLocaleDateString("en-US", { timeZone: "UTC" })}`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {nextInQueue && doc.status !== "needs_review" && (
+            <Button asChild size="sm">
+              <Link href={`/documents/${nextInQueue.id}`}>
+                Next in review queue
+                <ArrowRightIcon />
+              </Link>
+            </Button>
+          )}
           {doc.storageKey && !extracting && <RetryButton documentId={doc.id} />}
           <DeleteDocumentButton action={deleteDocumentAction.bind(null, doc.id)} />
         </div>
