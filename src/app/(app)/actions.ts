@@ -5,13 +5,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { CREDIT_STATUSES, type ConfirmInput } from "@/lib/confirm";
-import { CREDIT_REASONS } from "@/lib/reasons";
 import {
   confirmAllClean,
   confirmDocument,
   deleteDocument,
   retryExtraction,
-  setCreditReason,
   setCreditStatus,
   type ConfirmResult,
 } from "@/lib/server/documents";
@@ -58,11 +56,6 @@ export async function confirmAllCleanAction(): Promise<ActionResult> {
 export async function setCreditStatusAction(documentId: string, status: string): Promise<ActionResult> {
   const { organizationId } = await requireSession();
   return run(() => setCreditStatus(organizationId, Id.parse(documentId), z.enum(CREDIT_STATUSES).parse(status)));
-}
-
-export async function setCreditReasonAction(documentId: string, reason: string): Promise<ActionResult> {
-  const { organizationId } = await requireSession();
-  return run(() => setCreditReason(organizationId, Id.parse(documentId), z.enum(CREDIT_REASONS).parse(reason)));
 }
 
 export async function setCreditLinkAction(documentId: string, choice: string): Promise<ActionResult> {

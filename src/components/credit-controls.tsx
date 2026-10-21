@@ -2,10 +2,9 @@
 
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { setCreditLinkAction, setCreditReasonAction, setCreditStatusAction, type ActionResult } from "@/app/(app)/actions";
+import { setCreditLinkAction, setCreditStatusAction, type ActionResult } from "@/app/(app)/actions";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CREDIT_STATUS_LABELS, CREDIT_STATUSES, type CreditStatusKey } from "@/lib/confirm";
-import { CREDIT_REASONS, REASON_LABELS, type CreditReasonKey } from "@/lib/reasons";
 import { cn } from "@/lib/utils";
 
 function useAction() {
@@ -34,24 +33,6 @@ export function CreditStatusSelect({ documentId, value }: { documentId: string; 
         {CREDIT_STATUSES.map((s) => (
           <SelectItem key={s} value={s}>
             {CREDIT_STATUS_LABELS[s]}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-export function CreditReasonSelect({ documentId, value }: { documentId: string; value: CreditReasonKey }) {
-  const { pending, run } = useAction();
-  return (
-    <Select value={value} disabled={pending} onValueChange={(next) => run(() => setCreditReasonAction(documentId, next), "Reason updated")}>
-      <SelectTrigger size="sm" aria-label="Credit reason" className="min-w-40">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {CREDIT_REASONS.map((r) => (
-          <SelectItem key={r} value={r}>
-            {REASON_LABELS[r]}
           </SelectItem>
         ))}
       </SelectContent>

@@ -2,7 +2,6 @@ import { ConfirmInputSchema, parseConfirmInput, toConfirmInput, type ConfirmInpu
 import { fromPlainDate, toPlainDate } from "@/lib/dates";
 import { db, isUniqueViolation } from "@/lib/db";
 import { dedupeKey, normalizeDocumentNumber, sha256Hex, vendorKeyFor } from "@/lib/dedupe";
-import type { CreditReasonKey } from "@/lib/reasons";
 import { issueList, reviewDocument } from "@/lib/review";
 import { relinkUnlinkedCredits, setCreditLink } from "@/lib/server/linking";
 import { enqueueExtraction } from "@/lib/server/queue";
@@ -212,14 +211,6 @@ export async function setCreditStatus(organizationId: string, documentId: string
   const result = await db.document.updateMany({
     where: { id: documentId, organizationId, type: "credit_memo" },
     data: { creditStatus: status, creditStatusChangedAt: new Date() },
-  });
-  if (result.count === 0) throw new Error("Credit memo not found.");
-}
-
-export async function setCreditReason(organizationId: string, documentId: string, reason: CreditReasonKey) {
-  const result = await db.document.updateMany({
-    where: { id: documentId, organizationId, type: "credit_memo" },
-    data: { creditReason: reason, creditReasonSource: "user" },
   });
   if (result.count === 0) throw new Error("Credit memo not found.");
 }
