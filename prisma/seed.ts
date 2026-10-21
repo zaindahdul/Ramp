@@ -25,6 +25,8 @@ const db = createPrismaClient();
 const rng = createRng(20_261_021);
 const TODAY = todayUtc();
 const START = addDays(TODAY, -Math.round(MONTHS * 30.44));
+// Catalog prices are per unit for a single restaurant; the group buys for 3.
+const PRICE_SCALE = 3;
 
 type Catalog = Array<[description: string, unitCents: number, maxQty: number]>;
 
@@ -57,7 +59,7 @@ const PROFILES: Profile[] = [
     name: "Acme Supply",
     rawNames: ["ACME Supply, Inc.", "Acme Supply", "Acme Supply Co."],
     currency: "USD", prefix: "AS-", perMonth: 10, credits: 28,
-    reasons: [["pricing_error", 7], ["quantity_error", 2], ["duplicate_billing", 1], ["damaged_or_defective", 1]],
+    reasons: [["pricing_error", 10], ["quantity_error", 2], ["duplicate_billing", 0.5], ["damaged_or_defective", 1]],
     catalog: [
       ["Copy paper, 10 ream case", 4_299, 20],
       ["Nitrile gloves, box of 100", 1_250, 40],
@@ -361,7 +363,8 @@ function makeLines(profile: Profile) {
   return picked.map(([description, unit, maxQty]) => {
     const quantity = rng.int(1, maxQty);
     // Small price drift between invoices, always whole cents.
-    const unitPriceCents = unit + divRound(unit * rng.int(-3, 3), 100);
+    const base = unit * PRICE_SCALE;
+    const unitPriceCents = base + divRound(base * rng.int(-3, 3), 100);
     return { description, quantity, unitPriceCents, lineTotalCents: unitPriceCents * quantity };
   });
 }
@@ -493,12 +496,15 @@ async function main() {
       let description: string;
       let reference: string | null = rng.chance(0.9) ? target.number : null;
       switch (reason) {
-        case "pricing_error":
-          amount = Math.max(100, divRound(line.lineTotalCents * rng.int(5, 25), 100));
+        case "pricing_error": {
+          // Wrong rate applied across the invoice, not just one line.
+          const subtotal = target.lines.reduce((s, l) => s + l.lineTotalCents, 0);
+          amount = Math.max(100, divRound(subtotal * rng.int(4, 18), 100));
           description = `Price correction: ${line.description}`;
           break;
+        }
         case "quantity_error": {
-          const units = Math.max(1, Math.min(3, line.quantity - 1));
+          const units = Math.max(1, Math.min(rng.int(1, 4), line.quantity - 1));
           amount = units * line.unitPriceCents;
           description = `Quantity correction: ${line.description} (${units} not delivered)`;
           break;
