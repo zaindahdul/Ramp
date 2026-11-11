@@ -70,12 +70,20 @@ const RULES: Array<[CreditReasonKey, RegExp]> = [
   ["return", /return|\brma\b|restock|sent back/i],
 ];
 
-export function classifyReasonText(text: string | null | undefined): CreditReasonKey | null {
+/** The first rule that matches, with the words that triggered it. */
+export function matchReasonText(
+  text: string | null | undefined,
+): { reason: CreditReasonKey; phrase: string } | null {
   if (!text) return null;
   for (const [reason, pattern] of RULES) {
-    if (pattern.test(text)) return reason;
+    const match = pattern.exec(text);
+    if (match) return { reason, phrase: match[0].trim() };
   }
   return null;
+}
+
+export function classifyReasonText(text: string | null | undefined): CreditReasonKey | null {
+  return matchReasonText(text)?.reason ?? null;
 }
 
 export interface ReasonInput {
@@ -85,19 +93,70 @@ export interface ReasonInput {
   lineDescriptions: string[];
 }
 
+/** What a reason was based on, strongest evidence first. */
+export type ReasonBasis =
+  | { kind: "stated_rule"; phrase: string }
+  | { kind: "stated_model" }
+  | { kind: "stated_unmatched" }
+  | { kind: "model" }
+  | { kind: "line_rule"; phrase: string }
+  | { kind: "none" };
+
+export interface ReasonDecision {
+  reason: CreditReasonKey;
+  source: "stated" | "inferred";
+  basis: ReasonBasis;
+}
+
 /**
- * Exactly one reason per credit. A stated reason wins; otherwise infer from the
- * extractor's suggestion, then from the line item text.
+ * Exactly one reason per credit, with what it rests on. A stated reason wins;
+ * otherwise infer from the extractor's suggestion, then from the line item text.
  */
+export function decideCreditReason(input: ReasonInput): ReasonDecision {
+  if (input.statedReason && input.statedReason.trim() !== "") {
+    const fromText = matchReasonText(input.statedReason);
+    if (fromText) {
+      return { reason: fromText.reason, source: "stated", basis: { kind: "stated_rule", phrase: fromText.phrase } };
+    }
+    if (input.suggestedReason) {
+      return { reason: input.suggestedReason, source: "stated", basis: { kind: "stated_model" } };
+    }
+    return { reason: "other", source: "stated", basis: { kind: "stated_unmatched" } };
+  }
+  if (input.suggestedReason) {
+    return { reason: input.suggestedReason, source: "inferred", basis: { kind: "model" } };
+  }
+  const fromLines = matchReasonText(input.lineDescriptions.join(" \n "));
+  if (fromLines) {
+    return { reason: fromLines.reason, source: "inferred", basis: { kind: "line_rule", phrase: fromLines.phrase } };
+  }
+  return { reason: "other", source: "inferred", basis: { kind: "none" } };
+}
+
 export function determineCreditReason(input: ReasonInput): {
   reason: CreditReasonKey;
   source: "stated" | "inferred";
 } {
-  if (input.statedReason && input.statedReason.trim() !== "") {
-    const fromText = classifyReasonText(input.statedReason);
-    return { reason: fromText ?? input.suggestedReason ?? "other", source: "stated" };
+  const { reason, source } = decideCreditReason(input);
+  return { reason, source };
+}
+
+/** One plain sentence saying why a credit got its reason. */
+export function explainReason(decision: ReasonDecision, statedReason: string | null): string {
+  const label = REASON_LABELS[decision.reason];
+  const stated = statedReason?.trim() ? `“${statedReason.trim()}”` : "a reason";
+  switch (decision.basis.kind) {
+    case "stated_rule":
+      return `The memo states ${stated}. The wording “${decision.basis.phrase}” maps to ${label}.`;
+    case "stated_model":
+      return `The memo states ${stated}. No keyword rule covers that wording, so the extractor's reading of it (${label}) was used.`;
+    case "stated_unmatched":
+      return `The memo states ${stated}, which matches no category. Filed under Other until a person picks one.`;
+    case "model":
+      return `The memo states no reason. ${label} is the extractor's reading of the document.`;
+    case "line_rule":
+      return `The memo states no reason. The line item wording “${decision.basis.phrase}” maps to ${label}.`;
+    default:
+      return "The memo states no reason and nothing in the line items suggests one. Filed under Other until a person picks one.";
   }
-  const inferred =
-    input.suggestedReason ?? classifyReasonText(input.lineDescriptions.join(" \n ")) ?? "other";
-  return { reason: inferred, source: "inferred" };
 }

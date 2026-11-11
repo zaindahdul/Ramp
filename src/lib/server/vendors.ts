@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { db, isUniqueViolation } from "@/lib/db";
 import { dedupeKey, vendorKeyFor } from "@/lib/dedupe";
+import { recordEvent, type Actor } from "@/lib/server/audit";
 import { displayVendorName, normalizeVendorName } from "@/lib/vendors/normalize";
 
 type Tx = Prisma.TransactionClient;
@@ -20,9 +21,13 @@ export async function findVendorByName(
 }
 
 /** Matches loosely on name; creates the vendor (and its alias) when new. */
-export async function findOrCreateVendor(organizationId: string, rawName: string, tx: Tx = db): Promise<string> {
+export async function findOrCreateVendor(
+  organizationId: string,
+  rawName: string,
+  tx: Tx = db,
+): Promise<{ id: string; name: string; created: boolean }> {
   const existing = await findVendorByName(organizationId, rawName, tx);
-  if (existing) return existing.id;
+  if (existing) return { ...existing, created: false };
   const normalizedName = normalizeVendorName(rawName);
   if (!normalizedName) throw new Error("Vendor name is empty after normalization");
   try {
@@ -33,12 +38,12 @@ export async function findOrCreateVendor(organizationId: string, rawName: string
         aliases: { create: { organizationId, normalizedName, rawName } },
       },
     });
-    return vendor.id;
+    return { id: vendor.id, name: vendor.name, created: true };
   } catch (error) {
     // Another request created it first.
     if (isUniqueViolation(error)) {
       const raced = await findVendorByName(organizationId, rawName, tx);
-      if (raced) return raced.id;
+      if (raced) return { ...raced, created: false };
     }
     throw error;
   }
@@ -49,14 +54,21 @@ export async function findOrCreateVendor(organizationId: string, rawName: string
  * source vendor is deleted. Records that become duplicates of each other keep
  * existing, but only the first keeps the duplicate key, and the second is flagged.
  */
-export async function mergeVendors(organizationId: string, sourceId: string, targetId: string): Promise<void> {
+export async function mergeVendors(
+  organizationId: string,
+  sourceId: string,
+  targetId: string,
+  actor: Actor,
+): Promise<void> {
   if (sourceId === targetId) throw new Error("Pick a different vendor to merge into.");
   await db.$transaction(async (tx) => {
     const vendors = await tx.vendor.findMany({
       where: { organizationId, id: { in: [sourceId, targetId] } },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     if (vendors.length !== 2) throw new Error("Vendor not found.");
+    const source = vendors.find((v) => v.id === sourceId)!;
+    const target = vendors.find((v) => v.id === targetId)!;
 
     const moved = await tx.document.findMany({
       where: { organizationId, vendorId: sourceId },
@@ -90,6 +102,19 @@ export async function mergeVendors(organizationId: string, sourceId: string, tar
       }
     }
     await tx.vendorAlias.updateMany({ where: { organizationId, vendorId: sourceId }, data: { vendorId: targetId } });
+    // Events about the old vendor follow its documents to the merged vendor.
+    await tx.auditEvent.updateMany({ where: { organizationId, vendorId: sourceId }, data: { vendorId: targetId } });
     await tx.vendor.delete({ where: { id: sourceId } });
+    await recordEvent(
+      {
+        organizationId,
+        vendorId: targetId,
+        actor,
+        action: "vendor.merged",
+        summary: `Merged ${source.name} into ${target.name}. ${moved.length} document${moved.length === 1 ? "" : "s"} moved.`,
+        detail: { sourceId, sourceName: source.name, targetId, documentsMoved: moved.length },
+      },
+      tx,
+    );
   });
 }

@@ -23,7 +23,11 @@ Rules:
   pricing_error (charged the wrong price or rate), quantity_error (billed for more units than delivered),
   damaged_or_defective, duplicate_billing (billed twice), return, rebate_or_promo,
   service_failure (missed SLA, late or failed service), other.
-  Use null for invoices and other documents.`;
+  Use null for invoices and other documents.
+
+Show where each value came from. In evidence, give the exact printed text behind vendorName, documentNumber, documentDate, total, referencedInvoiceNumber and statedReason, for each of those you filled in. Copy the text as printed, including its label when there is one ("Total due $1,246.90"). A person checks your reading against these quotes, and so does a program.
+
+Say when you are not sure. If a value is smudged, handwritten over, cut off, or printed two different ways, still give your best reading, and list the field in uncertain with one sentence on what is wrong. An uncertain reading goes to a person; a confident wrong one may not, so do not guess silently. Leave uncertain empty when the document is clear.`;
 
 // Server-side fallback: if the model declines for policy reasons, the API
 // retries on Anthropic's recommended fallback model. With "default", models
@@ -67,7 +71,7 @@ export class ClaudeExtractor implements Extractor {
         messages: [
           {
             role: "user",
-            content: [file, { type: "text", text: `File name: ${input.filename}\nExtract this document.` }],
+            content: [file, { type: "text", text: userText(input) }],
           },
         ],
         output_config: { effort: "medium", format: betaZodOutputFormat(ExtractionSchema) },
@@ -87,6 +91,26 @@ export class ClaudeExtractor implements Extractor {
     }
     return response.parsed_output;
   }
+}
+
+/**
+ * Per-request context, kept out of the system prompt so that prompt stays
+ * byte-identical across organizations. The customer's name guards against the
+ * most common misread: taking the "bill to" party for the vendor.
+ */
+function userText(input: ExtractInput): string {
+  const lines = [`File name: ${input.filename}`];
+  const { customerName, knownVendors } = input.hints;
+  if (customerName) {
+    lines.push(`This document was sent to ${customerName}, the customer. ${customerName} is never the vendor.`);
+  }
+  if (knownVendors.length > 0) {
+    lines.push(
+      `Vendors already on file, for context only (still copy the issuer's name exactly as printed): ${knownVendors.join("; ")}.`,
+    );
+  }
+  lines.push("Extract this document.");
+  return lines.join("\n");
 }
 
 function toExtractionError(error: unknown): Error {

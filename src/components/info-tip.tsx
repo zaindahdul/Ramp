@@ -6,12 +6,15 @@ export function InfoTip({ label, children }: { label: React.ReactNode; children:
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button type="button" className="inline-flex items-center gap-1 text-left decoration-dotted underline-offset-4 hover:underline">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-left [font:inherit] tracking-[inherit] [text-transform:inherit] decoration-dotted underline-offset-4 hover:underline"
+        >
           {label}
           <InfoIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         </button>
       </TooltipTrigger>
-      <TooltipContent className="max-w-72 text-left leading-relaxed">{children}</TooltipContent>
+      <TooltipContent className="max-w-72 text-left leading-relaxed normal-case tracking-normal">{children}</TooltipContent>
     </Tooltip>
   );
 }

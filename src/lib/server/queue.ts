@@ -1,68 +1,79 @@
 import { db } from "@/lib/db";
-import { processDocument } from "@/lib/server/pipeline";
+import { processClaimedDocument } from "@/lib/server/pipeline";
 
-// A small in-process queue. Uploads return immediately; extraction runs in the
-// background of the same Node process. State lives on globalThis so dev-mode
-// module reloads don't lose it. If the process dies mid-extraction, the next
-// status poll finds the stuck document and queues it again (recoverStuckDocuments).
+// The extraction queue lives in Postgres, not in memory. A document with status
+// `uploaded` is a pending job; a worker claims the oldest one with
+// FOR UPDATE SKIP LOCKED, which flips it to `extracting` in the same statement.
+// Two workers (or two server processes) can never take the same document, and a
+// restart loses nothing: the jobs are rows.
+//
+// The only in-process state is how many workers are running, kept on globalThis
+// so dev-mode module reloads don't start extra ones.
 
 const CONCURRENCY = 2;
 const STALE_EXTRACTING_MS = 5 * 60 * 1000;
 
-interface Job {
-  organizationId: string;
-  documentId: string;
-}
-
 interface QueueState {
-  pending: Job[];
-  queued: Set<string>;
   running: number;
 }
 
-const globalForQueue = globalThis as unknown as { __apExtractionQueue?: QueueState };
-const state: QueueState = (globalForQueue.__apExtractionQueue ??= {
-  pending: [],
-  queued: new Set(),
-  running: 0,
-});
+const globalForQueue = globalThis as unknown as { __apExtractionWorkers?: QueueState };
+const state: QueueState = (globalForQueue.__apExtractionWorkers ??= { running: 0 });
 
-function pump(): void {
-  while (state.running < CONCURRENCY && state.pending.length > 0) {
-    const job = state.pending.shift()!;
+interface ClaimedJob {
+  id: string;
+  organizationId: string;
+}
+
+/** Atomically takes the oldest waiting document, or returns null when none is waiting. */
+export async function claimNextDocument(): Promise<ClaimedJob | null> {
+  const rows = await db.$queryRaw<ClaimedJob[]>`
+    UPDATE "Document"
+       SET "status" = 'extracting',
+           "extractionStartedAt" = now(),
+           "extractionAttempts" = "extractionAttempts" + 1,
+           "updatedAt" = now()
+     WHERE "id" = (
+             SELECT "id" FROM "Document"
+              WHERE "status" = 'uploaded'
+              ORDER BY "createdAt", "id"
+              LIMIT 1
+                FOR UPDATE SKIP LOCKED
+           )
+    RETURNING "id", "organizationId"`;
+  return rows[0] ?? null;
+}
+
+async function work(): Promise<void> {
+  for (let job = await claimNextDocument(); job; job = await claimNextDocument()) {
+    await processClaimedDocument(job.organizationId, job.id).catch((error) =>
+      console.error("[queue] job crashed", job, error),
+    );
+  }
+}
+
+/** Starts workers (up to the concurrency limit) to drain whatever is waiting. */
+export function kickExtraction(): void {
+  while (state.running < CONCURRENCY) {
     state.running += 1;
-    processDocument(job.organizationId, job.documentId)
-      .catch((error) => console.error("[queue] job crashed", job, error))
+    work()
+      .catch((error) => console.error("[queue] worker stopped", error))
       .finally(() => {
         state.running -= 1;
-        state.queued.delete(job.documentId);
-        pump();
       });
   }
 }
 
-export function enqueueExtraction(organizationId: string, documentIds: string[]): void {
-  for (const documentId of documentIds) {
-    if (state.queued.has(documentId)) continue;
-    state.queued.add(documentId);
-    state.pending.push({ organizationId, documentId });
-  }
-  pump();
-}
-
-/** Re-queues documents left behind by a restart: never started, or stuck extracting. */
+/**
+ * Puts documents left `extracting` by a dead process back in line, then drains
+ * the queue. Called by the status poll, so a restart heals on the next request.
+ */
 export async function recoverStuckDocuments(organizationId: string): Promise<void> {
   const staleBefore = new Date(Date.now() - STALE_EXTRACTING_MS);
   await db.document.updateMany({
     where: { organizationId, status: "extracting", extractionStartedAt: { lt: staleBefore } },
     data: { status: "uploaded" },
   });
-  const waiting = await db.document.findMany({
-    where: { organizationId, status: "uploaded" },
-    select: { id: true },
-    orderBy: { createdAt: "asc" },
-    take: 50,
-  });
-  const toQueue = waiting.map((d) => d.id).filter((id) => !state.queued.has(id));
-  if (toQueue.length > 0) enqueueExtraction(organizationId, toQueue);
+  const waiting = await db.document.count({ where: { organizationId, status: "uploaded" } });
+  if (waiting > 0) kickExtraction();
 }

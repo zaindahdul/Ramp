@@ -43,7 +43,12 @@ export async function readEmbeddedExtraction(data: Buffer): Promise<RawExtractio
     const pdf = await PDFDocument.load(data, { ignoreEncryption: true, updateMetadata: false });
     const subject = pdf.getSubject();
     if (!subject?.startsWith(MOCK_EXTRACTION_PREFIX)) return null;
-    const parsed = ExtractionSchema.safeParse(JSON.parse(subject.slice(MOCK_EXTRACTION_PREFIX.length)));
+    // Samples generated before evidence and uncertainty existed still load.
+    const parsed = ExtractionSchema.safeParse({
+      evidence: [],
+      uncertain: [],
+      ...JSON.parse(subject.slice(MOCK_EXTRACTION_PREFIX.length)),
+    });
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -107,6 +112,8 @@ function plausibleExtraction(input: ExtractInput, rng: Rng): RawExtraction {
     referencedInvoiceNumber: null,
     statedReason: null,
     suggestedReason: null,
+    evidence: [],
+    uncertain: [],
   };
 }
 
@@ -138,5 +145,7 @@ function mockCreditMemo(rng: Rng, invoice: ExtractInput["hints"]["recentInvoices
     referencedInvoiceNumber: rng.chance(0.8) ? invoice.documentNumber : null,
     statedReason: rng.chance(0.7) ? statedReason : null,
     suggestedReason: reason,
+    evidence: [],
+    uncertain: [],
   };
 }

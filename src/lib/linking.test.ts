@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  decideCreditLink,
+  explainLink,
   lineOverlapScore,
   linkCreditToInvoice,
   type LinkableCredit,
@@ -131,5 +133,46 @@ describe("lineOverlapScore", () => {
     expect(lineOverlapScore(["Toner HP 26A", "Desk"], ["HP 26A toner cartridge"])).toBe(1);
     expect(lineOverlapScore(["Credit"], ["Anything"])).toBe(0);
     expect(lineOverlapScore([], ["Anything"])).toBe(0);
+  });
+});
+
+describe("explainLink", () => {
+  const explain = (c: LinkableCredit, invoices: LinkableInvoice[], number: string | null = null) =>
+    explainLink(decideCreditLink(c, invoices), number);
+
+  it("cites the referenced number when it links by reference", () => {
+    const invoices = [invoice({ id: "a", documentNumber: "INV-1002" })];
+    expect(explain(credit({ referencedInvoiceNumber: "INV-1002" }), invoices, "INV-1002")).toBe(
+      "The memo names invoice INV-1002, and exactly one invoice from this vendor carries that number.",
+    );
+  });
+
+  it("says the linker didn't guess when candidates tie", () => {
+    const invoices = [invoice({ id: "a" }), invoice({ id: "b" })];
+    const text = explain(credit(), invoices);
+    expect(text).toContain("The memo names no invoice.");
+    expect(text).toContain("2 invoices from this vendor fit equally well");
+    expect(text).toContain("Left for a person to pick.");
+  });
+
+  it("explains a heuristic link by its line overlap and the runner-up", () => {
+    const invoices = [
+      invoice({ id: "paper", documentNumber: "P-1", lineDescriptions: ["Copy paper, 10 ream case"] }),
+      invoice({ id: "toner", documentNumber: "T-1", lineDescriptions: ["Toner cartridge HP 26A"] }),
+    ];
+    const text = explain(credit({ lineDescriptions: ["Price correction: copy paper, 10 ream case"] }), invoices, "P-1");
+    expect(text).toContain("P-1 matches 1 of 1 credit line");
+    expect(text).toContain("the next best matches 0");
+  });
+
+  it("mentions a referenced invoice that isn't on file", () => {
+    const text = explain(credit({ referencedInvoiceNumber: "MISSING-9" }), []);
+    expect(text).toContain("The memo names invoice MISSING-9, which isn't among this vendor's confirmed invoices.");
+    expect(text).toContain("No invoice from this vendor");
+  });
+
+  it("reports the evidence it weighed", () => {
+    const { evidence } = decideCreditLink(credit(), [invoice({ id: "a" }), invoice({ id: "b" })]);
+    expect(evidence).toMatchObject({ reference: null, eligible: 2, tied: 2 });
   });
 });

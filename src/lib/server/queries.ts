@@ -68,6 +68,8 @@ export interface CreditRow {
   reason: CreditReasonKey;
   status: "open" | "applied" | "written_off";
   linkedInvoice: { id: string; documentNumber: string | null } | null;
+  /** The linker's sentence for why it linked, abstained or found nothing. */
+  linkRationale: string | null;
 }
 
 const creditSelect = {
@@ -81,6 +83,7 @@ const creditSelect = {
   creditReason: true,
   creditStatus: true,
   linkCandidateIds: true,
+  linkRationale: true,
   vendor: { select: { name: true } },
   linkedInvoice: { select: { id: true, documentNumber: true } },
 } as const;
@@ -95,6 +98,7 @@ type CreditRecord = {
   totalCents: number | null;
   creditReason: CreditReasonKey | null;
   creditStatus: "open" | "applied" | "written_off" | null;
+  linkRationale: string | null;
   vendor: { name: string } | null;
   linkedInvoice: { id: string; documentNumber: string | null } | null;
 };
@@ -113,6 +117,7 @@ function toCreditRow(c: CreditRecord, today: PlainDate): CreditRow {
     reason: c.creditReason ?? "other",
     status: c.creditStatus ?? "open",
     linkedInvoice: c.linkedInvoice,
+    linkRationale: c.linkRationale,
   };
 }
 

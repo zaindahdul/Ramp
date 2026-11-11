@@ -162,6 +162,21 @@ function extractionFor(s: Sample): RawExtraction {
     referencedInvoiceNumber: s.referencedInvoice ?? null,
     statedReason: s.reason ?? null,
     suggestedReason: s.suggestedReason ?? null,
+    // The same text the PDF prints, so the mock cites its sources the way Claude does.
+    evidence: [
+      { field: "vendorName", quote: s.vendor },
+      { field: "documentNumber", quote: `${s.kind === "INVOICE" ? "Invoice #" : "Credit memo #"} ${s.number}` },
+      { field: "documentDate", quote: `Date ${formatPlainDate(s.date)}` },
+      {
+        field: "total",
+        quote: `${s.kind === "INVOICE" ? "Total due" : "Total credit"} ${formatCents(t.total, s.currency)}`,
+      },
+      ...(s.referencedInvoice
+        ? [{ field: "referencedInvoiceNumber", quote: `Applies to invoice ${s.referencedInvoice}` }]
+        : []),
+      ...(s.reason ? [{ field: "statedReason", quote: `Reason for credit ${s.reason}` }] : []),
+    ],
+    uncertain: [],
   };
 }
 

@@ -10,7 +10,6 @@ export function ConfirmCleanButton({ count }: { count: number }) {
   const [pending, start] = useTransition();
   return (
     <Button
-      size="sm"
       disabled={pending}
       onClick={() =>
         start(async () => {

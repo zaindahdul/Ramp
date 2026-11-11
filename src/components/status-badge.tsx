@@ -1,29 +1,44 @@
-import { AlertCircleIcon, CheckCircle2Icon, CircleDashedIcon, EyeIcon, LoaderIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type DocumentStatusKey = "uploaded" | "extracting" | "needs_review" | "confirmed" | "failed";
 
-const STYLES: Record<DocumentStatusKey, { label: string; className: string; Icon: typeof CheckCircle2Icon }> = {
-  uploaded: { label: "Uploaded", className: "bg-muted text-muted-foreground", Icon: CircleDashedIcon },
-  extracting: { label: "Extracting", className: "bg-sky-50 text-sky-900", Icon: LoaderIcon },
-  needs_review: { label: "Needs review", className: "bg-amber-50 text-amber-900", Icon: EyeIcon },
-  confirmed: { label: "Confirmed", className: "bg-emerald-50 text-emerald-900", Icon: CheckCircle2Icon },
-  failed: { label: "Failed", className: "bg-red-50 text-red-900", Icon: AlertCircleIcon },
+const STYLES: Record<DocumentStatusKey, { label: string; dot: string }> = {
+  uploaded: { label: "Queued", dot: "bg-line-strong" },
+  extracting: { label: "Reading", dot: "bg-intel animate-pulse" },
+  needs_review: { label: "Needs review", dot: "bg-warning" },
+  confirmed: { label: "Confirmed", dot: "bg-positive" },
+  failed: { label: "Failed", dot: "bg-negative" },
 };
 
-export function DocumentStatusBadge({ status, className }: { status: DocumentStatusKey; className?: string }) {
-  const { label, className: tone, Icon } = STYLES[status];
+/** A neutral pill with a colored dot. The color carries the state; the pill stays quiet. */
+export function Pill({
+  dot,
+  children,
+  className,
+}: {
+  dot?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
-        tone,
+        "inline-flex h-6 items-center gap-1.5 rounded-full bg-paper px-2 text-xs whitespace-nowrap text-ink",
         className,
       )}
     >
-      <Icon className={cn("size-3", status === "extracting" && "animate-spin")} />
-      {label}
+      {dot && <span className={cn("size-1.5 shrink-0 rounded-full", dot)} aria-hidden />}
+      {children}
     </span>
+  );
+}
+
+export function DocumentStatusBadge({ status, className }: { status: DocumentStatusKey; className?: string }) {
+  const { label, dot } = STYLES[status];
+  return (
+    <Pill dot={dot} className={className}>
+      {label}
+    </Pill>
   );
 }
 

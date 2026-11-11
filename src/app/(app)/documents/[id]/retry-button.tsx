@@ -12,12 +12,11 @@ export function RetryButton({ documentId, label = "Re-extract" }: { documentId: 
     <Button
       type="button"
       variant="outline"
-      size="sm"
       disabled={pending}
       onClick={() =>
         start(async () => {
           const result = await retryExtractionAction(documentId);
-          if (result.ok) toast.success("Extraction restarted");
+          if (result.ok) toast.success("Reading the document again");
           else toast.error(result.error);
         })
       }

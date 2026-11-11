@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUser } from "@/lib/workspace";
 import { db } from "@/lib/db";
 import { getStorage } from "@/lib/storage";
 
 // Streams the original upload for the review screen's viewer.
 export async function GET(_request: Request, ctx: RouteContext<"/api/documents/[id]/file">) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  const session = await currentUser();
   const { id } = await ctx.params;
 
   const doc = await db.document.findFirst({

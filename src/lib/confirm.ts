@@ -2,7 +2,7 @@ import { z } from "zod";
 import { isPlainDate, type PlainDate } from "@/lib/dates";
 import type { NormalizedLineItem } from "@/lib/extraction/schema";
 import { centsToDecimalString, isCurrencyCode, parseMoneyToCents } from "@/lib/money";
-import { CREDIT_REASONS, type CreditReasonKey } from "@/lib/reasons";
+import { CREDIT_REASONS, REASON_LABELS, type CreditReasonKey } from "@/lib/reasons";
 
 // The review form posts strings exactly as typed. parseConfirmInput() validates
 // them and turns amounts into integer cents (or reports per-field errors).
@@ -217,4 +217,73 @@ export function toConfirmInput(doc: DocumentFormSource): ConfirmInput {
     creditStatus: doc.creditStatus,
     link: doc.linkMethod === "manual" ? (doc.linkedInvoiceId ?? "none") : "auto",
   };
+}
+
+/** Confirmed fields back in form shape, so they can be compared with what was stored. */
+export function confirmFieldsToInput(f: ConfirmFields): ConfirmInput {
+  return toConfirmInput({
+    ...f,
+    vendorNameRaw: f.vendorName,
+    linkMethod: null,
+    linkedInvoiceId: null,
+  });
+}
+
+export interface FieldChange {
+  field: string;
+  label: string;
+  from: string;
+  to: string;
+}
+
+const DIFF_FIELDS: Array<[keyof ConfirmInput, string]> = [
+  ["type", "document type"],
+  ["vendorName", "vendor"],
+  ["documentNumber", "document number"],
+  ["documentDate", "document date"],
+  ["dueDate", "due date"],
+  ["paymentTerms", "payment terms"],
+  ["currency", "currency"],
+  ["subtotal", "subtotal"],
+  ["tax", "tax"],
+  ["total", "total"],
+  ["referencedInvoiceNumber", "referenced invoice"],
+  ["statedReason", "stated reason"],
+  ["creditReason", "reason"],
+  ["creditStatus", "credit status"],
+];
+
+const TYPE_NAMES: Record<string, string> = { invoice: "Invoice", credit_memo: "Credit memo", other: "Other" };
+
+function shown(field: keyof ConfirmInput, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "blank";
+  const text = String(value);
+  if (field === "type") return TYPE_NAMES[text] ?? text;
+  if (field === "creditReason") return REASON_LABELS[text as CreditReasonKey] ?? text;
+  if (field === "creditStatus") return CREDIT_STATUS_LABELS[text as CreditStatusKey] ?? text;
+  return text;
+}
+
+/**
+ * What a reviewer changed, field by field. On the first confirmation this is the
+ * list of corrections to the extraction, which is the feedback an extractor
+ * eval needs.
+ */
+export function diffConfirmInputs(before: ConfirmInput, after: ConfirmInput): FieldChange[] {
+  const changes: FieldChange[] = [];
+  for (const [field, label] of DIFF_FIELDS) {
+    const from = shown(field, before[field]);
+    const to = shown(field, after[field]);
+    if (from !== to) changes.push({ field, label, from, to });
+  }
+  if (JSON.stringify(before.lineItems) !== JSON.stringify(after.lineItems)) {
+    const count = (n: number) => `${n} line${n === 1 ? "" : "s"}`;
+    changes.push({
+      field: "lineItems",
+      label: "line items",
+      from: count(before.lineItems.length),
+      to: before.lineItems.length === after.lineItems.length ? "edited" : count(after.lineItems.length),
+    });
+  }
+  return changes;
 }

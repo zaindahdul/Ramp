@@ -2,10 +2,12 @@ import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { InfoTip } from "@/components/info-tip";
+import { PageHeader } from "@/components/page-header";
 import { ReasonBar } from "@/components/reason-bar";
 import { ScorecardFilters } from "@/components/scorecard-filters";
+import { Stat } from "@/components/stat";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireSession } from "@/lib/auth";
+import { currentUser } from "@/lib/workspace";
 import { formatPlainDate, todayUtc } from "@/lib/dates";
 import {
   computeScorecard,
@@ -40,7 +42,7 @@ const COLUMNS: Array<{ key: SortKey; label: string; definition?: string; numeric
 ];
 
 export default async function VendorsPage({ searchParams }: PageProps<"/vendors">) {
-  const { organizationId } = await requireSession();
+  const { organizationId } = await currentUser();
   const params = await searchParams;
   const today = todayUtc();
   const periodKey = parsePeriod(one(params.period));
@@ -77,112 +79,119 @@ export default async function VendorsPage({ searchParams }: PageProps<"/vendors"
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Vendor scorecard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {period.label}: {formatPlainDate(period.start)} to {formatPlainDate(period.end)} · amounts in {currency}
-          </p>
-        </div>
-        <ScorecardFilters period={periodKey} currency={currency} currencies={currencies} hrefFor={href} />
+    <div className="space-y-8">
+      <PageHeader
+        title="Vendor scorecard"
+        description={
+          <>
+            {period.label}: {formatPlainDate(period.start)} to {formatPlainDate(period.end)}. Amounts in {currency}.
+          </>
+        }
+        actions={<ScorecardFilters period={periodKey} currency={currency} currencies={currencies} hrefFor={href} />}
+      />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Invoices" value={totals.invoices.toLocaleString("en-US")} detail="All vendors" />
+        <Stat
+          label="Billing error rate"
+          value={formatRate(totals.invoices ? totals.errorInvoices / totals.invoices : null)}
+          detail={`${totals.errorInvoices.toLocaleString("en-US")} invoices needed a correction`}
+        />
+        <Stat label="Total credits" value={formatCents(totals.credits, currency, { wholeUnits: true })} detail="Issued in the period" />
+        <Stat
+          label="Open balance"
+          value={formatCents(totals.open, currency, { wholeUnits: true })}
+          detail="Still owed, all time"
+          className="bg-ink text-white [&_.eyebrow]:text-white/60 [&_.figure]:text-solar [&_div:last-child]:text-white/60"
+        />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-4">
-        {[
-          ["Invoices", String(totals.invoices)],
-          ["Billing error rate", formatRate(totals.invoices ? totals.errorInvoices / totals.invoices : null)],
-          ["Total credits", formatCents(totals.credits, currency, { wholeUnits: true })],
-          ["Open balance", formatCents(totals.open, currency, { wholeUnits: true })],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-xl border p-4">
-            <div className="text-xs text-muted-foreground">{label}, all vendors</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="rounded-xl border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {COLUMNS.map((col) => {
-                const active = sort === col.key;
-                const nextDir: SortDir = active ? (dir === "asc" ? "desc" : "asc") : col.numeric ? "desc" : "asc";
-                return (
-                  <TableHead key={col.key} className={cn(col.numeric && "text-right")}>
-                    <div className={cn("inline-flex items-center gap-1", col.numeric && "justify-end")}>
-                      {col.definition ? <InfoTip label={<span className="sr-only">Definition of</span>}>{col.definition}</InfoTip> : null}
-                      <Link
-                        href={href({ sort: col.key, dir: nextDir })}
-                        className={cn("inline-flex items-center gap-1 hover:text-foreground", active && "text-foreground")}
-                        aria-label={`Sort by ${col.label}`}
-                      >
-                        {col.label}
-                        {active && (dir === "asc" ? <ArrowUpIcon className="size-3" /> : <ArrowDownIcon className="size-3" />)}
-                      </Link>
-                    </div>
-                  </TableHead>
-                );
-              })}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {COLUMNS.map((col, i) => {
+              const active = sort === col.key;
+              const nextDir: SortDir = active ? (dir === "asc" ? "desc" : "asc") : col.numeric ? "desc" : "asc";
+              return (
+                <TableHead
+                  key={col.key}
+                  className={cn(col.numeric && "text-right", i === 0 && "pl-0", i === COLUMNS.length - 1 && "pr-0")}
+                  aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
+                >
+                  <div className={cn("inline-flex items-center gap-1", col.numeric && "justify-end")}>
+                    {col.definition ? <InfoTip label={<span className="sr-only">Definition of</span>}>{col.definition}</InfoTip> : null}
+                    <Link
+                      href={href({ sort: col.key, dir: nextDir })}
+                      className={cn("inline-flex items-center gap-1 hover:text-foreground", active && "text-foreground")}
+                      aria-label={`Sort by ${col.label}`}
+                    >
+                      {col.label}
+                      {active && (dir === "asc" ? <ArrowUpIcon className="size-3" /> : <ArrowDownIcon className="size-3" />)}
+                    </Link>
+                  </div>
+                </TableHead>
+              );
+            })}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 && (
+            <TableRow className="hover:bg-transparent">
+              <TableCell colSpan={COLUMNS.length} className="py-12 text-center text-muted-foreground">
+                No confirmed documents in {currency} yet.
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={COLUMNS.length} className="py-10 text-center text-muted-foreground">
-                  No confirmed documents in {currency} yet.
-                </TableCell>
-              </TableRow>
-            )}
-            {rows.map((r) => (
-              <TableRow key={r.vendorId}>
-                <TableCell className="font-medium">
-                  <Link href={`/vendors/${r.vendorId}?period=${periodKey}&currency=${currency}`} className="hover:underline">
-                    {r.vendorName}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{r.invoiceCount}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  <span className={cn(r.billingErrorRate !== null && r.billingErrorRate >= 0.1 && "font-semibold text-red-800")}>
-                    {formatRate(r.billingErrorRate)}
-                  </span>
-                  {r.invoiceCount > 0 && (
+          )}
+          {rows.map((r) => (
+            <TableRow key={r.vendorId} className="relative">
+              <TableCell className="pl-0 font-medium">
+                <Link
+                  href={`/vendors/${r.vendorId}?period=${periodKey}&currency=${currency}`}
+                  className="underline-offset-4 after:absolute after:inset-0 hover:underline"
+                >
+                  {r.vendorName}
+                </Link>
+              </TableCell>
+              <TableCell className="text-right tabular-nums">{r.invoiceCount}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                <span className={cn(r.billingErrorRate !== null && r.billingErrorRate >= 0.1 && "font-medium text-negative-ink")}>
+                  {formatRate(r.billingErrorRate)}
+                </span>
+                {r.invoiceCount > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    {r.invoicesWithBillingError} of {r.invoiceCount}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell className="relative z-10 text-right tabular-nums">
+                {r.creditCount === 0 ? (
+                  <span className="text-muted-foreground">{formatCents(0, currency)}</span>
+                ) : (
+                  <>
+                    {formatCents(r.totalCreditsCents, currency)}
                     <div className="text-xs text-muted-foreground">
-                      {r.invoicesWithBillingError} of {r.invoiceCount}
+                      {r.creditCount} credit{r.creditCount === 1 ? "" : "s"}
                     </div>
-                  )}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {r.creditCount === 0 ? (
-                    <span className="text-muted-foreground">{formatCents(0, currency)}</span>
-                  ) : (
-                    <>
-                      {formatCents(r.totalCreditsCents, currency)}
-                      <div className="text-xs text-muted-foreground">
-                        {r.creditCount} credit{r.creditCount === 1 ? "" : "s"}
-                      </div>
-                      <ReasonBar byReason={r.byReason} totalCents={r.totalCreditsCents} currency={currency} />
-                    </>
-                  )}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {r.averageCreditCents === null ? "—" : formatCents(r.averageCreditCents, currency)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatDays(r.medianDaysToResolve)}
-                  {r.medianDaysToResolve !== null && r.linkedCreditCount < r.creditCount && (
-                    <div className="text-xs text-muted-foreground">{r.linkedCreditCount} linked</div>
-                  )}
-                </TableCell>
-                <TableCell className={cn("text-right tabular-nums", r.openCreditCents > 0 && "font-medium")}>
-                  {formatCents(r.openCreditCents, currency)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                    <ReasonBar byReason={r.byReason} totalCents={r.totalCreditsCents} currency={currency} />
+                  </>
+                )}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {r.averageCreditCents === null ? "\u2014" : formatCents(r.averageCreditCents, currency)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatDays(r.medianDaysToResolve)}
+                {r.medianDaysToResolve !== null && r.linkedCreditCount < r.creditCount && (
+                  <div className="text-xs text-muted-foreground">{r.linkedCreditCount} linked</div>
+                )}
+              </TableCell>
+              <TableCell className={cn("pr-0 text-right tabular-nums", r.openCreditCents > 0 ? "font-medium" : "text-muted-foreground")}>
+                {formatCents(r.openCreditCents, currency)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
       {otherCurrencies.length > 0 && (
         <p className="text-xs text-muted-foreground">
           Some vendors bill in {otherCurrencies.join(", ")}. Amounts are never converted between currencies; switch

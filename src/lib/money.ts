@@ -215,6 +215,8 @@ export function formatCentsCompact(cents: Cents, currency: string): string {
     style: "currency",
     currency: code,
     notation: "compact",
+    // Explicit, because some Node/ICU versions otherwise keep a trailing ".0".
+    minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(centsToDecimalString(cents, code) as `${number}`);
 }

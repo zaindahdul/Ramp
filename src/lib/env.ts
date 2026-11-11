@@ -22,9 +22,6 @@ export const env = {
   get STORAGE_DIR() {
     return read("STORAGE_DIR") ?? "./storage";
   },
-  get SESSION_COOKIE_SECURE() {
-    return read("SESSION_COOKIE_SECURE") === "true";
-  },
 };
 
 /** Mock extraction runs whenever no Anthropic API key is configured. */

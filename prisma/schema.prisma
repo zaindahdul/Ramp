@@ -63,46 +63,58 @@ enum LinkMethod {
   manual
 }
 
+// How much the system may do without a person. The guardrails in
+// src/lib/autonomy.ts apply at every level above review_all.
+enum AutonomyLevel {
+  review_all
+  auto_within_limit
+  auto_clean
+}
+
+enum ConfirmedVia {
+  review
+  bulk
+  autopilot
+  seed
+}
+
+enum ActorType {
+  user
+  system
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
-  users     User[]
-  sessions  Session[]
-  vendors   Vendor[]
-  aliases   VendorAlias[]
-  documents Document[]
-  lineItems LineItem[]
+  // Autonomy: which extracted documents may confirm themselves. The limit is
+  // in minor units of autoConfirmCurrency; other currencies always go to review.
+  autonomyLevel         AutonomyLevel @default(review_all)
+  autoConfirmLimitCents Int           @default(50000)
+  autoConfirmCurrency   String        @default("USD") @db.Char(3)
+
+  users       User[]
+  vendors     Vendor[]
+  aliases     VendorAlias[]
+  documents   Document[]
+  lineItems   LineItem[]
+  auditEvents AuditEvent[]
 }
 
+// The app has no sign-in: it runs as a single user (see src/lib/workspace.ts).
+// Users still exist so every audit event can name the person behind a change.
 model User {
   id             String   @id @default(cuid())
   organizationId String
   email          String   @unique
   name           String
-  passwordHash   String
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sessions     Session[]
+  auditEvents  AuditEvent[]
 
   @@index([organizationId])
-}
-
-model Session {
-  id             String   @id @default(cuid())
-  organizationId String
-  userId         String
-  // sha256 of the cookie value; the raw token is never stored.
-  tokenHash      String   @unique
-  expiresAt      DateTime @db.Timestamptz(3)
-  createdAt      DateTime @default(now()) @db.Timestamptz(3)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
 
 model Vendor {
@@ -115,6 +127,7 @@ model Vendor {
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   aliases      VendorAlias[]
   documents    Document[]
+  auditEvents  AuditEvent[]
 
   @@index([organizationId])
 }
@@ -181,14 +194,19 @@ model Document {
   statedReason            String?
   creditReason            CreditReason?
   creditReasonSource      ReasonSource?
+  // One sentence: what the reason was based on (rule, model suggestion, person).
+  creditReasonBasis       String?
   creditStatus            CreditStatus?
   creditStatusChangedAt   DateTime?     @db.Timestamptz(3)
   linkedInvoiceId         String?
   linkMethod              LinkMethod?
   // Invoices that fit equally well when auto-linking was ambiguous.
   linkCandidateIds        String[]      @default([])
+  // One sentence: why the linker linked, abstained or found nothing.
+  linkRationale           String?
 
-  confirmedAt DateTime? @db.Timestamptz(3)
+  confirmedAt  DateTime?     @db.Timestamptz(3)
+  confirmedVia ConfirmedVia?
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
 
@@ -197,6 +215,7 @@ model Document {
   linkedInvoice Document?    @relation("CreditLink", fields: [linkedInvoiceId], references: [id], onDelete: SetNull)
   credits       Document[]   @relation("CreditLink")
   lineItems     LineItem[]
+  auditEvents   AuditEvent[]
 
   @@unique([organizationId, fileSha256])
   @@unique([organizationId, dedupeKey])
@@ -221,4 +240,31 @@ model LineItem {
   document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId])
+}
+
+// Append-only trail of everything that changed a record: who (a person or a
+// named part of the system), what, and the evidence behind it. Events outlive
+// the document or vendor they describe.
+model AuditEvent {
+  id             String    @id @default(cuid())
+  organizationId String
+  documentId     String?
+  vendorId       String?
+  actorType      ActorType
+  actorUserId    String?
+  // "Demo User", "Extraction", "Linker", "Autopilot".
+  actorName      String
+  // Dotted verb, e.g. document.confirmed, credit.linked, vendor.merged.
+  action         String
+  summary        String
+  detail         Json?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document?    @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  vendor       Vendor?      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  actorUser    User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([documentId, createdAt])
 }

@@ -1,7 +1,9 @@
 import type { RawExtraction } from "@/lib/extraction/schema";
 
 export interface ExtractionHints {
-  /** Vendor names already on file, to make mock output look like real traffic. */
+  /** The organization receiving the documents. It is the customer, never the vendor. */
+  customerName: string;
+  /** Vendor names already on file: context for reading the issuer's name. */
   knownVendors: string[];
   recentInvoices: Array<{
     vendorName: string;

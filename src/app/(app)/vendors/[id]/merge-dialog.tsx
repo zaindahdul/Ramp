@@ -33,7 +33,7 @@ export function MergeVendorDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline">
           <MergeIcon />
           Merge into…
         </Button>

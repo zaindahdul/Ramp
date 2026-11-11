@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyReasonText, determineCreditReason, isBillingError } from "@/lib/reasons";
+import { classifyReasonText, decideCreditReason, determineCreditReason, explainReason, isBillingError } from "@/lib/reasons";
 
 describe("classifyReasonText", () => {
   it.each([
@@ -58,5 +58,27 @@ describe("determineCreditReason", () => {
     expect(isBillingError("duplicate_billing")).toBe(true);
     expect(isBillingError("return")).toBe(false);
     expect(isBillingError(null)).toBe(false);
+  });
+});
+
+describe("explainReason", () => {
+  const explain = (statedReason: string | null, suggestedReason: Parameters<typeof decideCreditReason>[0]["suggestedReason"], lines: string[] = []) =>
+    explainReason(decideCreditReason({ statedReason, suggestedReason, lineDescriptions: lines }), statedReason);
+
+  it("quotes the stated reason and the words that decided it", () => {
+    expect(explain("Price billed above contract rate", "return")).toBe(
+      "The memo states \u201cPrice billed above contract rate\u201d. The wording \u201cPrice\u201d maps to Pricing error.",
+    );
+  });
+
+  it("says when the extractor's reading was used", () => {
+    expect(explain("Goodwill", "service_failure")).toContain("the extractor's reading of it (Service failure)");
+    expect(explain(null, "return")).toBe("The memo states no reason. Return is the extractor's reading of the document.");
+  });
+
+  it("says when it fell back to the line items or to Other", () => {
+    expect(explain(null, null, ["Damaged pallet"])).toContain("line item wording \u201cDamage\u201d maps to Damaged or defective");
+    expect(explain(null, null)).toContain("Filed under Other");
+    expect(explain("Goodwill", null)).toContain("matches no category");
   });
 });

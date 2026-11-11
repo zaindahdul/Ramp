@@ -3,6 +3,18 @@ import { isPlainDate, type PlainDate } from "@/lib/dates";
 import { isCurrencyCode, parseMoneyToCents } from "@/lib/money";
 import { CREDIT_REASONS, isCreditReason, type CreditReasonKey } from "@/lib/reasons";
 
+/** Fields the extractor backs with a verbatim quote from the document. */
+export const EVIDENCE_FIELDS = [
+  "vendorName",
+  "documentNumber",
+  "documentDate",
+  "total",
+  "referencedInvoiceNumber",
+  "statedReason",
+] as const;
+
+export type EvidenceField = (typeof EVIDENCE_FIELDS)[number];
+
 // What an extractor (Claude or the mock) returns. Amounts are decimal strings
 // so nothing passes through a float; normalizeExtraction() turns them into cents.
 //
@@ -42,6 +54,24 @@ export const ExtractionSchema = z.object({
     .string()
     .nullable()
     .describe(`Credit memos only: the best-fitting reason, one of: ${CREDIT_REASONS.join(", ")}`),
+  evidence: z
+    .array(
+      z.object({
+        field: z.string().describe(`One of: ${EVIDENCE_FIELDS.join(", ")}`),
+        quote: z.string().describe("The printed text the value was read from, copied exactly"),
+      }),
+    )
+    .describe("For each of those fields you filled in, the exact text on the document it came from"),
+  uncertain: z
+    .array(
+      z.object({
+        field: z.string().describe("The field name, e.g. total or documentNumber"),
+        why: z.string().describe("One short sentence: what makes the reading unreliable"),
+      }),
+    )
+    .describe(
+      "Fields you could not read with certainty: smudged, handwritten over, cut off, or printed with two conflicting values. Empty when the document is clear.",
+    ),
 });
 
 export type RawExtraction = z.infer<typeof ExtractionSchema>;
@@ -68,6 +98,10 @@ export interface NormalizedExtraction {
   referencedInvoiceNumber: string | null;
   statedReason: string | null;
   suggestedReason: CreditReasonKey | null;
+  /** Verbatim source text per field, as quoted by the extractor. */
+  evidence: Partial<Record<EvidenceField, string>>;
+  /** Fields the extractor flagged instead of guessing silently. */
+  uncertain: Array<{ field: string; why: string }>;
 }
 
 const MAX_INT4 = 2_147_483_647;
@@ -147,5 +181,31 @@ export function normalizeExtraction(raw: RawExtraction): NormalizedExtraction {
     referencedInvoiceNumber: isCredit ? clean(raw.referencedInvoiceNumber) : null,
     statedReason: isCredit ? clean(raw.statedReason) : null,
     suggestedReason: isCredit ? coerceReason(raw.suggestedReason) : null,
+    evidence: cleanEvidence(raw.evidence),
+    uncertain: (raw.uncertain ?? []).flatMap((u) => {
+      const field = clean(u.field);
+      const why = clean(u.why);
+      return field && why ? [{ field, why }] : [];
+    }),
+  };
+}
+
+function cleanEvidence(entries: RawExtraction["evidence"] | undefined): NormalizedExtraction["evidence"] {
+  const evidence: NormalizedExtraction["evidence"] = {};
+  for (const entry of entries ?? []) {
+    const field = EVIDENCE_FIELDS.find((f) => f.toLowerCase() === entry.field.trim().toLowerCase());
+    const quote = clean(entry.quote);
+    if (field && quote && !(field in evidence)) evidence[field] = quote.slice(0, 300);
+  }
+  return evidence;
+}
+
+/** Reads the evidence and uncertainty out of a stored raw extraction, if it has any. */
+export function extractionNotes(raw: unknown): Pick<NormalizedExtraction, "evidence" | "uncertain"> {
+  const parsed = ExtractionSchema.pick({ evidence: true, uncertain: true }).partial().safeParse(raw);
+  if (!parsed.success) return { evidence: {}, uncertain: [] };
+  return {
+    evidence: cleanEvidence(parsed.data.evidence),
+    uncertain: (parsed.data.uncertain ?? []).filter((u) => u.field.trim() !== "" && u.why.trim() !== ""),
   };
 }

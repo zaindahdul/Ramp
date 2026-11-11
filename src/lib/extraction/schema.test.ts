@@ -20,6 +20,8 @@ const base: RawExtraction = {
   referencedInvoiceNumber: null,
   statedReason: null,
   suggestedReason: null,
+  evidence: [],
+  uncertain: [],
 };
 
 describe("normalizeExtraction", () => {

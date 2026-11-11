@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/app/(app)/vendors/[id]/summary/print-button";
 import { ScorecardFilters } from "@/components/scorecard-filters";
-import { requireSession } from "@/lib/auth";
+import { currentUser } from "@/lib/workspace";
 import { daysBetween, formatPlainDate, fromPlainDate, toPlainDate, todayUtc } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
@@ -31,14 +31,14 @@ function one(value: string | string[] | undefined): string | undefined {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="break-inside-avoid">
-      <h2 className="mb-2 border-b pb-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</h2>
+      <h2 className="eyebrow mb-3 border-b border-ink pb-1.5 text-ink">{title}</h2>
       {children}
     </section>
   );
 }
 
 export default async function NegotiationSummaryPage({ params, searchParams }: PageProps<"/vendors/[id]/summary">) {
-  const session = await requireSession();
+  const session = await currentUser();
   const { organizationId } = session;
   const { id } = await params;
   const query = await searchParams;
@@ -106,23 +106,24 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
         </div>
       </div>
 
-      <article className="space-y-8 rounded-xl border bg-card p-8 print:rounded-none print:border-0 print:p-0">
+      <article className="space-y-10 rounded-2xl border bg-card p-8 sm:p-10 print:rounded-none print:border-0 print:p-0">
         <header>
-          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Vendor billing summary</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{vendor.name}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <span className="accent-dash" aria-hidden />
+          <p className="eyebrow mt-4">Vendor billing summary</p>
+          <h1 className="mt-1 text-4xl leading-tight font-normal">{vendor.name}</h1>
+          <p className="mt-3 text-sm text-muted-foreground">
             Prepared for {session.organizationName} · {formatPlainDate(period.start)} to {formatPlainDate(period.end)} ·{" "}
             amounts in {currency} · generated {formatPlainDate(today)}
           </p>
         </header>
 
-        <section className="space-y-3">
-          <p className="text-lg leading-relaxed font-medium">{lead}</p>
-          {rest.length > 0 && <p className="leading-relaxed text-foreground/90">{rest.join(" ")}</p>}
+        <section className="space-y-4">
+          <p className="text-2xl leading-8 tracking-[-0.02em] text-pretty">{lead}</p>
+          {rest.length > 0 && <p className="leading-relaxed text-pretty text-foreground/85">{rest.join(" ")}</p>}
         </section>
 
         <Section title="Key figures">
-          <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:grid-cols-3">
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-5 text-sm sm:grid-cols-4">
             {[
               ["Invoices", String(m.invoiceCount)],
               ["Billing error rate", `${formatRate(m.billingErrorRate)}${m.invoiceCount ? ` (${m.invoicesWithBillingError} of ${m.invoiceCount})` : ""}`],
@@ -135,7 +136,7 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="text-xs text-muted-foreground">{label}</dt>
-                <dd className="font-medium tabular-nums">{value}</dd>
+                <dd className="figure mt-0.5 text-xl">{value}</dd>
               </div>
             ))}
           </dl>
@@ -146,13 +147,13 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
             <p className="text-sm text-muted-foreground">No credits in this period.</p>
           ) : (
             <table className="w-full text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
+              <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-2 py-1 font-medium">Reason</th>
-                  <th className="px-2 py-1 text-right font-medium">Credits</th>
-                  <th className="px-2 py-1 text-right font-medium">Invoices affected</th>
-                  <th className="px-2 py-1 text-right font-medium">Amount</th>
-                  <th className="px-2 py-1 text-right font-medium">Still open</th>
+                  <th className="px-2 py-1.5 font-normal">Reason</th>
+                  <th className="px-2 py-1.5 text-right font-normal">Credits</th>
+                  <th className="px-2 py-1.5 text-right font-normal">Invoices affected</th>
+                  <th className="px-2 py-1.5 text-right font-normal">Amount</th>
+                  <th className="px-2 py-1.5 text-right font-normal">Still open</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -178,13 +179,13 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
             <p className="text-sm text-muted-foreground">Nothing open. Every credit has been applied or written off.</p>
           ) : (
             <table className="w-full text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
+              <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-2 py-1 font-medium">Credit memo</th>
-                  <th className="px-2 py-1 font-medium">Date</th>
-                  <th className="px-2 py-1 text-right font-medium">Age</th>
-                  <th className="px-2 py-1 font-medium">Reason</th>
-                  <th className="px-2 py-1 text-right font-medium">Amount</th>
+                  <th className="px-2 py-1.5 font-normal">Credit memo</th>
+                  <th className="px-2 py-1.5 font-normal">Date</th>
+                  <th className="px-2 py-1.5 text-right font-normal">Age</th>
+                  <th className="px-2 py-1.5 font-normal">Reason</th>
+                  <th className="px-2 py-1.5 text-right font-normal">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -208,13 +209,13 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
         {largestErrors.length > 0 && (
           <Section title="Largest billing-error credits">
             <table className="w-full text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
+              <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-2 py-1 font-medium">Credit memo</th>
-                  <th className="px-2 py-1 font-medium">Date</th>
-                  <th className="px-2 py-1 font-medium">Invoice</th>
-                  <th className="px-2 py-1 font-medium">Reason</th>
-                  <th className="px-2 py-1 text-right font-medium">Amount</th>
+                  <th className="px-2 py-1.5 font-normal">Credit memo</th>
+                  <th className="px-2 py-1.5 font-normal">Date</th>
+                  <th className="px-2 py-1.5 font-normal">Invoice</th>
+                  <th className="px-2 py-1.5 font-normal">Reason</th>
+                  <th className="px-2 py-1.5 text-right font-normal">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -245,7 +246,7 @@ export default async function NegotiationSummaryPage({ params, searchParams }: P
               ] as const
             ).map(([label, text]) => (
               <div key={label}>
-                <dt className="inline font-medium text-foreground">{label}: </dt>
+                <dt className="inline text-foreground">{label}: </dt>
                 <dd className="inline">{text}</dd>
               </div>
             ))}

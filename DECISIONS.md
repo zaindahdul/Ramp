@@ -4,10 +4,10 @@ Judgment calls made while building the MVP, each with a one-line reason.
 
 ## Tooling and stack
 
-- **Next.js 16.4 (App Router) with Cache Components off.** Every page is per-user and reads the session cookie, so a prerendered static shell buys nothing and adds Suspense rules.
+- **Next.js 16.4 (App Router) with Cache Components off.** Every page reads live data from Postgres on each request, so a prerendered static shell buys nothing and adds Suspense rules.
 - **Prisma 7.10.1, not the npm `latest` tag.** `latest` currently points at an 8.0 release candidate; 7.10.1 is the newest stable.
 - **Prisma 7 with the `pg` driver adapter.** Prisma 7 requires a driver adapter; `@prisma/adapter-pg` is the standard one for Postgres.
-- **shadcn/ui on the Radix base, Nova preset.** Radix is the long-standing shadcn base, and Nova is the default preset.
+- **shadcn/ui on the Radix base, Nova preset, restyled with tokens.** Radix is the long-standing shadcn base, and Nova is the default preset. The Ramp look comes from CSS variables and a handful of small components, not from forking the primitives.
 - **pnpm build scripts are allow-listed in `pnpm-workspace.yaml`.** pnpm 12 blocks dependency build scripts by default, and Prisma's engines need theirs.
 - **Every env var has a working default** (`src/lib/env.ts`, `prisma.config.ts`). The setup steps never copy `.env.example`, so a clean clone has to run without a `.env`.
 - **`pnpm db:migrate` runs `prisma migrate dev` and then `prisma generate`.** Prisma 7 no longer generates the client as a side effect of migrating.
@@ -30,8 +30,8 @@ Judgment calls made while building the MVP, each with a one-line reason.
 
 ## Documents, extraction and review
 
-- **Every extracted document goes to `needs_review`; nothing is auto-confirmed.** The spec's status flow always passes through review, and financial data from an LLM deserves a human look in an MVP.
-- **The review rule decides what is flagged, not what is skipped.** Documents with missing key fields or totals that don't add up show the issues at the top; clean ones show "Ready to confirm".
+- **Every extracted document goes to `needs_review` first, and by default stays there until a person confirms it.** The spec's status flow always passes through review, and financial data from an LLM deserves a human look. Autonomy (below) is opt-in.
+- **The review rule decides what is flagged, not what is skipped.** Documents with missing key fields or totals that don't add up show the issues at the top; clean ones say every check passed.
 - **A "Confirm N clean documents" button exists for bulk work.** It gets you straight-through processing without giving up the review step.
 - **Key fields are type, vendor, document number, document date, currency and total.** Due date and terms are often absent on real invoices and on all credit memos.
 - **Missing key fields block confirmation; a totals mismatch is a warning.** Discounts, freight and rounding legitimately break the arithmetic on some documents.
@@ -45,8 +45,9 @@ Judgment calls made while building the MVP, each with a one-line reason.
 - **Mock mode applies whenever `ANTHROPIC_API_KEY` is unset.** The spec ties mock mode to that variable, even though the SDK can find other credentials.
 - **Sample PDFs carry their own correct extraction in the PDF Subject metadata.** In mock mode they extract exactly as Claude would read the visible text; any other file gets plausible data derived from its hash.
 - **The mock adds a 0.9–1.5 second delay.** The upload page should visibly move through `extracting`.
-- **The background queue is in-process, with two workers, on `globalThis`.** The spec allows it; each document is claimed with an `updateMany` on its status, so it never runs twice.
-- **Polling the status endpoint also recovers stuck jobs.** A dev-server restart would otherwise leave documents in `uploaded` or `extracting` forever.
+- **The queue is the `Document` table: a row with status `uploaded` is a job, claimed with `FOR UPDATE SKIP LOCKED`.** Nothing is held in memory, so a restart loses nothing and two workers (or two server processes) can't take the same document. Ramp reached the same design for payments after Celery proved unreliable.
+- **Two workers run inside the web process.** It keeps the demo to one command. Only the worker count lives on `globalThis`.
+- **Polling the status endpoint also recovers stuck jobs.** A document left `extracting` for five minutes by a dead process goes back in line.
 - **Files are content-addressed per organization (`{org}/{sha256}.{ext}`).** The same file always maps to the same key, which makes same-file dedupe free.
 - **Seeded documents have no file.** Generating about 2,000 PDFs would slow the seed for no benefit; the review screen says it's a seeded record.
 
@@ -109,12 +110,13 @@ Judgment calls made while building the MVP, each with a one-line reason.
 - **Sentence amounts round to whole dollars; tables keep cents.** The spec's example uses whole dollars.
 - **Printing uses the browser's print-to-PDF with print CSS.** It needs no extra dependency, and the app chrome hides itself when printing.
 
-## Auth and tenancy
+## Sign-in and tenancy
 
-- **Auth is hand-rolled: bcrypt passwords plus database sessions.** A random token goes in an httpOnly cookie and only its sha256 is stored. It's small, with no beta auth library in the critical path.
-- **Every tenant table has `organizationId`, and every query filters by it.** The org comes from the session, never from request input.
-- **Signup creates a new organization.** There are no invitations yet, so one org per signup is the only option.
-- **The proxy (Next 16's renamed middleware) only checks that the cookie exists.** The real validation happens in `requireSession` and the API routes; the proxy skips `/api` so uploads aren't buffered by it.
+- **There is no sign-in.** The app opens straight into one workspace: the demo organization the seed creates, or an empty one made on first use. A login screen added a step to every demo and protected nothing in a single-team prototype, so the pages, sessions and password hashes were removed rather than left unused.
+- **Anyone who can reach the app can see and change its data.** Run it locally or behind a private network. This is the first thing to add back before real data goes in.
+- **The data model is still multi-tenant.** Every tenant table has `organizationId`, and every query filters by it. The organization comes from `currentUser()` in `src/lib/workspace.ts`, never from request input, so adding sign-in back means changing that one function.
+- **A user row is kept.** Every audit event names the person behind a change, so the app runs as a real user rather than as nobody.
+- **`currentUser()` calls `connection()` first.** With no cookie read to mark a page as per-request, Next would otherwise prerender pages at build time from whatever was in the database.
 
 ## Seed data
 
@@ -124,3 +126,48 @@ Judgment calls made while building the MVP, each with a one-line reason.
 - **"Pacific Linen Svc" and "Pacific Linen Service" are deliberately two vendors.** They demonstrate manual merge.
 - **Non-USD documents come from whole vendors** (EUR, GBP, CAD). Vendors usually bill in one currency.
 - **Rerunning `pnpm seed` deletes and rebuilds the demo organization.** That keeps it idempotent; it touches no other organization.
+
+## What follows Ramp, and why
+
+Each of these is something Ramp has published about its own product. Links are in the README's Architecture section.
+
+- **The model reads; plain code decides.** One model call per document returns the fields. Arithmetic, grounding, duplicates, the reason rules, linking and autonomy are deterministic and unit-tested. Ramp's receipt matching makes the same split: the model for the merchant name, deterministic detection for date and amount.
+- **Every automated decision stores a sentence saying why.** The linker's `linkRationale`, the reason's `creditReasonBasis` and every audit summary are written at decision time from the evidence the code actually used, not generated afterward. Ramp: "Every decision needs a 'why'".
+- **The extractor quotes its source for each key field, and code checks the quote.** A total whose own quote doesn't contain it is flagged. The API's citations feature can't be combined with structured outputs, so the quotes are fields in the schema.
+- **No confidence scores anywhere.** The extractor lists fields it is unsure about, with a reason, and the linker abstains on ties. Ramp: "Confidence scores are hallucinations". A named doubt is something a reviewer can act on; 0.83 is not.
+- **Uncertain readings still carry the best reading.** The reviewer starts from a value to check instead of a blank.
+- **Autonomy is a three-level setting with guardrails that hold at every level.** Off by default. The guardrails are code: no open issue, vendor on file, an invoice or credit memo, not a duplicate. Ramp calls this an autonomy slider with deterministic rules on top.
+- **A new vendor is never created without a person.** A misread name would otherwise create a junk vendor and split its metrics.
+- **The limit applies to one currency; other currencies always wait for a person.** Comparing a EUR amount to a USD limit would be a conversion, and the app never converts.
+- **Bulk confirm stays, and does create vendors.** A person clicked it, so it is a human decision recorded under their name.
+- **The audit trail is append-only and names its actor.** A person, or Extraction, Linker, Autopilot. The actor's name is stored on the event, so the trail still reads correctly after a user is renamed or removed.
+- **Events outlive what they describe.** Deleting a document or merging a vendor nulls the reference and keeps the event; the summary carries the description.
+- **A confirmation records each field the reviewer changed.** It is the audit trail, and it is also the labeled data a real extraction eval needs.
+- **The linker logs only a changed outcome.** It re-runs for a vendor's unlinked credits whenever an invoice is confirmed; "still ambiguous" every time would bury the trail.
+- **`pnpm eval` gates the decision logic.** The demo-data generator knows the true invoice and reason for every credit, so the eval needs no hand labeling. It fails on any wrong link.
+- **The zero-edit rate is the headline number for extraction.** It is what Ramp reports for invoice OCR, and it is cheap to compute from the corrections already recorded.
+- **Extraction stays on one model at medium effort.** A cheaper cascade is a cost optimization with no measurement behind it yet; the model is one environment variable when there is.
+- **The customer's name and the vendors on file go in the user message, not the system prompt.** The system prompt stays identical across organizations, and telling the model who the customer is prevents the most common misread (the "bill to" party as the vendor).
+
+## Design language
+
+- **The palette is Ramp's, read from its public CSS.** Solar `#E4F222`, ink `#1A1919`, paper `#F4F2F0` and the warm neutrals between; green, orange and amber for status.
+- **Inter stands in for TWK Lausanne.** Lausanne is licensed; Inter is the first fallback in Ramp's own font stack. IBM Plex Mono for document numbers.
+- **Headings are regular weight with tight tracking; display numbers are light.** That, more than the yellow, is what makes a page read as Ramp.
+- **The primary button is solar with ink text.** That is Ramp's primary. Ink buttons are the secondary strong action.
+- **Solar means two things only: the primary action, and money owed to you.** Used anywhere else it stops meaning either.
+- **Anything the system decided is blue.** Ramp marks AI with a separate blue palette, never yellow, so a person's choice and the system's are told apart at a glance.
+- **Status colors come as an ink and a soft background.** Ramp's raw green and orange fail contrast as small text on white; the darker inks pass AA.
+- **Corners are 4px on controls and 8px on surfaces.** Ramp's buttons are nearly square.
+- **A left sidebar, underlined tabs that follow a document's life, hairline tables.** That is how Ramp's Bill Pay is laid out; the review screen keeps the document beside its fields for the same reason.
+- **The ink hero on Overview is the hackathon deck's own slide style.** A dark panel with the figure in solar.
+- **The app's name and mark are its own.** It borrows Ramp's language, not its logo.
+
+## Tradeoffs and what would change with more time
+
+- **The linker chooses precision over coverage.** When a memo prints no invoice number it links about 1 in 100 and asks a person for the rest (`pnpm eval`). Next: use amount evidence (a credit equal to a whole number of units at an invoice line's price), added behind the eval gate.
+- **The evals run on synthetic data.** They catch regressions, not real-world accuracy. Next: a labeled set of real documents, built from recorded reviewer corrections.
+- **Workers share the web process.** Next: a separate worker with retries and backoff, and an attempt row per extraction.
+- **No sign-in, and tenancy is enforced in application code.** Every query filters by `organizationId`. Next: real authentication (single sign-on), then row-level security keyed on the organization as a second layer, which Ramp describes for its own API.
+- **TypeScript end to end, not Ramp's Python backend.** One language and one deploy for a team of three; the data model and queue would port directly.
+- **Autonomy has one limit in one currency.** Next: per-vendor limits and a blocklist.

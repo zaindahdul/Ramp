@@ -136,16 +136,18 @@ export function Uploader() {
           void addFiles(Array.from(e.dataTransfer.files));
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed bg-muted/30 px-6 py-14 text-center transition-colors outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
-          dragging && "border-primary bg-muted",
+          "flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-line-strong bg-paper px-6 py-16 text-center transition-colors outline-none hover:border-ink focus-visible:ring-3 focus-visible:ring-ring/50",
+          dragging && "border-solid border-ink bg-solar-light",
         )}
       >
-        <UploadCloudIcon className="size-10 text-muted-foreground" />
+        <span className="flex size-12 items-center justify-center rounded-full bg-background">
+          <UploadCloudIcon className="size-6" strokeWidth={1.5} />
+        </span>
         <div>
-          <p className="font-medium">Drop invoices and credit memos here</p>
-          <p className="text-sm text-muted-foreground">PDF, PNG, JPEG, WebP or GIF, up to 20 MB each. Drop one or many.</p>
+          <p className="text-xl tracking-[-0.02em]">{dragging ? "Drop to upload" : "Drop invoices and credit memos here"}</p>
+          <p className="mt-1 text-sm text-muted-foreground">PDF, PNG, JPEG, WebP or GIF, up to 20 MB each. One or many.</p>
         </div>
-        <Button type="button" variant="outline" size="sm" tabIndex={-1}>
+        <Button type="button" variant="ink" tabIndex={-1}>
           Browse files
         </Button>
         <input
@@ -163,64 +165,74 @@ export function Uploader() {
       </div>
 
       {items.length > 0 && (
-        <div className="rounded-xl border">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <h2 className="text-sm font-medium">This session&apos;s uploads</h2>
+        <section>
+          <div className="flex items-end justify-between border-b border-ink pb-2">
+            <h2 className="text-base font-medium">This session&apos;s uploads</h2>
             {reviewReady > 0 && (
-              <Link href="/documents?status=needs_review" className="text-sm font-medium hover:underline">
-                Review {reviewReady} document{reviewReady === 1 ? "" : "s"} →
-              </Link>
+              <Button asChild size="sm">
+                <Link href="/documents?status=needs_review">
+                  Review {reviewReady} document{reviewReady === 1 ? "" : "s"}
+                  <ArrowRightIcon />
+                </Link>
+              </Button>
             )}
           </div>
-          <ul className="divide-y">
-            {items.map((item) => (
-              <li key={item.key} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <FileTextIcon className="size-5 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{item.filename}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatSize(item.size)}
-                    {item.duplicate && " · Already uploaded: showing the existing document"}
-                    {item.doc?.type && (
-                      <>
-                        {" · "}
-                        {TYPE_LABELS[item.doc.type]}
-                        {item.doc.vendorName && ` from ${item.doc.vendorName}`}
-                        {item.doc.documentNumber && ` · ${item.doc.documentNumber}`}
-                        {item.doc.totalCents !== null &&
-                          item.doc.currency &&
-                          ` · ${formatCents(item.doc.totalCents, item.doc.currency)}`}
-                      </>
-                    )}
-                  </div>
-                  {(item.error || item.doc?.errorMessage) && (
-                    <div className="mt-1 text-xs text-red-700">{item.error ?? item.doc?.errorMessage}</div>
-                  )}
-                  {item.doc?.status === "needs_review" && item.doc.issueCount > 0 && (
-                    <div className="mt-1 text-xs text-amber-800">
-                      {item.doc.issueCount} issue{item.doc.issueCount === 1 ? "" : "s"} flagged for review
+          <ul className="divide-y border-b">
+            {items.map((item) => {
+              const autoConfirmed = item.doc?.status === "confirmed" && !item.duplicate;
+              return (
+                <li key={item.key} className="flex flex-wrap items-center gap-3 py-3">
+                  <FileTextIcon className="size-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{item.filename}</div>
+                    <div className="text-xs leading-5 text-muted-foreground">
+                      {formatSize(item.size)}
+                      {item.duplicate && " · Already uploaded: showing the existing document"}
+                      {item.doc?.type && (
+                        <>
+                          {" · "}
+                          {TYPE_LABELS[item.doc.type]}
+                          {item.doc.vendorName && ` from ${item.doc.vendorName}`}
+                          {item.doc.documentNumber && ` · ${item.doc.documentNumber}`}
+                          {item.doc.totalCents !== null &&
+                            item.doc.currency &&
+                            ` · ${formatCents(item.doc.totalCents, item.doc.currency)}`}
+                        </>
+                      )}
                     </div>
+                    {(item.error || item.doc?.errorMessage) && (
+                      <div className="mt-0.5 text-xs text-negative-ink">{item.error ?? item.doc?.errorMessage}</div>
+                    )}
+                    {item.doc?.status === "needs_review" && item.doc.issueCount > 0 && (
+                      <div className="mt-0.5 text-xs text-warning-ink">
+                        {item.doc.issueCount} issue{item.doc.issueCount === 1 ? "" : "s"} flagged for review
+                      </div>
+                    )}
+                    {item.doc?.status === "needs_review" && item.doc.issueCount === 0 && item.doc.heldReason && (
+                      <div className="mt-0.5 text-xs text-intel-ink">{item.doc.heldReason}</div>
+                    )}
+                    {autoConfirmed && <div className="mt-0.5 text-xs text-intel-ink">Confirmed by autopilot</div>}
+                  </div>
+                  {item.error ? (
+                    <DocumentStatusBadge status="failed" />
+                  ) : item.doc ? (
+                    <DocumentStatusBadge status={item.doc.status} />
+                  ) : (
+                    <DocumentStatusBadge status="uploaded" className="opacity-70" />
                   )}
-                </div>
-                {item.error ? (
-                  <DocumentStatusBadge status="failed" />
-                ) : item.doc ? (
-                  <DocumentStatusBadge status={item.doc.status} />
-                ) : (
-                  <DocumentStatusBadge status="uploaded" className="opacity-70" />
-                )}
-                {item.id && item.doc && !pendingStatuses.has(item.doc.status) && (
-                  <Button asChild size="sm" variant={item.doc.status === "needs_review" ? "default" : "outline"}>
-                    <Link href={`/documents/${item.id}`}>
-                      {item.doc.status === "needs_review" ? "Review" : "Open"}
-                      <ArrowRightIcon />
-                    </Link>
-                  </Button>
-                )}
-              </li>
-            ))}
+                  {item.id && item.doc && !pendingStatuses.has(item.doc.status) && (
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/documents/${item.id}`}>
+                        {item.doc.status === "needs_review" ? "Review" : "Open"}
+                        <ArrowRightIcon />
+                      </Link>
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
-        </div>
+        </section>
       )}
     </div>
   );
